@@ -11,32 +11,40 @@ import time
 import logging
 from voice_engine.source import Source
 from voice_engine.kws import KWS
+from voice_engine.doa_respeaker_2mic_hat import DOA
 from avs.alexa import Alexa
-from pixels import pixels
-
+from billy_motors import billy
+import RPi.GPIO as GPIO
 
 def main():
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
 
     src = Source(rate=16000, frames_size=320)
-    kws = KWS(model='alexa', sensitivity=0.8)
+    doa = DOA()
+    kws = KWS(model='./Billy_Bass.pmdl', sensitivity=0.5)
     alexa = Alexa()
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setup(17, GPIO.IN)
 
+    alexa.state_listener.on_listening = billy.listen
+    alexa.state_listener.on_thinking = billy.think
+    alexa.state_listener.on_speaking = billy.speak
+    alexa.state_listener.on_finished = billy.finish
 
-    alexa.state_listener.on_listening = pixels.listen
-    alexa.state_listener.on_thinking = pixels.think
-    alexa.state_listener.on_speaking = pixels.speak
-    alexa.state_listener.on_finished = pixels.off
-
-
+    src.link(doa)
     src.link(kws)
     kws.link(alexa)
 
     def on_detected(keyword):
-        logging.info('detected {}'.format(keyword))
+        logging.info('detected {} from direction {}'.format(keyword, doa.get_direction()))
+        alexa.listen()
+
+    def on_button(button):
+        logging.info("Button {} pressed".format(button))
         alexa.listen()
 
     kws.set_callback(on_detected)
+    GPIO.add_event_detect(17, GPIO.RISING, callback=on_button)
 
     src.recursive_start()
 
